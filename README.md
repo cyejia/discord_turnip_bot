@@ -62,3 +62,9 @@ git clone https://github.com/chenyejia/discord_turnip_bot.git
 ```sh
 pip install -r requirements.txt
 ```
+
+3. Install pre-commit hooks
+
+```sh
+pre-commit install
+```
