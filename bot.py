@@ -9,6 +9,17 @@ bot = commands.Bot(command_prefix="/turnip ")
 
 
 @bot.command()
+async def help(ctx):
+    help_message = "Usage:\n"
+    help_message += "/turnip <command> [options]\n\n"
+    help_message += "Commands:\n"
+    help_message += "addme\t\t\tblah\n"
+    help_message += "addme\t\t\tblah\n"
+    help_message += "addme\t\t\tblah\n"
+    await ctx.send(help_message)
+
+
+@bot.command()
 async def ping(ctx):
     logging.log(logging.DEBUG, "sup bitch")
     await ctx.send("pong")
