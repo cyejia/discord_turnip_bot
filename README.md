@@ -12,7 +12,7 @@
     <a href="https://github.com/chenyejia/discord_turnip_bot"><strong>Explore the docs »</strong></a>
     <br />
     <br />
-    <a href="https://github.com/chenyejia/discord_turnip_bot">View Demo (TOD)</a>
+    <a href="https://github.com/chenyejia/discord_turnip_bot">View Demo (TODO)</a>
     ·
     <a href="https://github.com/chenyejia/discord_turnip_bot/issues">Report Bug</a>
     ·
@@ -32,8 +32,6 @@
   - [Installation](#installation)
 
 ## About The Project
-
-[![Product Name Screen Shot][product-screenshot]](https://example.com)
 
 ### Built With
 
