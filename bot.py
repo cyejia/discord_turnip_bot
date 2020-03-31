@@ -2,15 +2,20 @@ import logging
 import os
 
 import discord
+import psycopg2
+
 from discord.ext import commands
+
+DATABASE_URL = os.environ["DATABASE_URL"]
+DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
 
 logging.basicConfig(level=logging.DEBUG)
 bot = commands.Bot(command_prefix="/turnip ")
+conn = psycopg2.connect(DATABASE_URL, sslmode="require")
 
 
 @bot.command()
 async def ping(ctx):
-    logging.log(logging.DEBUG, "sup bitch")
     await ctx.send("pong")
 
 
@@ -40,4 +45,4 @@ async def show_graph(ctx, time: str, price: str):
     await ctx.send("Not implemented :(")
 
 
-bot.run(os.environ["DISCORD_TOKEN"])
+bot.run(DISCORD_TOKEN)
