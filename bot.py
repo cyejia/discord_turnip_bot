@@ -60,9 +60,7 @@ async def add_price(ctx, day: str, time_of_day: str, price: str):
     )
 
     # TODO: Make this a reaction instead
-    await ctx.send(
-        f"Ok! Adding {day} {new_time_of_day} price for {ctx.author.name} as {price}"
-    )
+    await ctx.message.add_reaction("👍")
 
 
 @bot.command()
@@ -120,6 +118,16 @@ async def show_graph(ctx, day_str: Optional[str] = None):
     df2 = df2.reindex(pd.unique(df["day_time"]))
 
     fig = plt.figure(figsize=(10, 5))
+    ax = fig.add_subplot(111)
+
+    ax.plot(x, x, c="b", marker="^", ls="--", label="Greedy", fillstyle="none")
+    ax.plot(x, x + 1, c="g", marker=(8, 2, 0), ls="--", label="Greedy Heuristic")
+    ax.plot(x, (x + 1) ** 2, c="k", ls="-", label="Random")
+    ax.plot(x, (x - 1) ** 2, c="r", marker="v", ls="-", label="GMC")
+    ax.plot(x, x ** 2 - 1, c="m", marker="o", ls="--", label="KSTW", fillstyle="none")
+    ax.plot(x, x - 1, c="k", marker="+", ls=":", label="DGYC")
+
+    plt.legend(loc=2)
     for user_id in df2.columns:
         plt.plot(df2.index, df2[user_id].values)
 
