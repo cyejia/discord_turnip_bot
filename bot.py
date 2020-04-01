@@ -92,7 +92,7 @@ async def show_graph(ctx, day_str: Optional[str] = None):
     end_day = start_day + datetime.timedelta(days=7)
 
     c = conn.cursor()
-    # TODO: include Sunday?
+
     c.execute(
         """
         SELECT
@@ -107,7 +107,7 @@ async def show_graph(ctx, day_str: Optional[str] = None):
             prices
         WHERE
             server_id = %s AND
-            day > %s AND
+            day >= %s AND
             day < %s
         ORDER BY
             day, time_of_day
@@ -134,17 +134,16 @@ async def show_graph(ctx, day_str: Optional[str] = None):
 
     fig, ax = plt.subplots()
 
-    df2.plot(ax=ax, style="o-")
+    df2.plot(ax=ax, style="o-", xticks=df.index, xlim=(0, 14), rot=60)
 
-    # plt.legend()
-    # plt.plot()
-    # for user_id in df2.columns:
-    #     plt.plot(df2.index, df2[user_id].values)
+    plt.tight_layout()
 
     with tempfile.NamedTemporaryFile(suffix=".png") as tf:
         fig.savefig(tf.name, bbox_inches="tight", dpi=150)
         plt.close(fig)
-        await ctx.send("Showing plot for TODO", file=discord.File(tf.name, tf.name))
+        await ctx.send(
+            f"Showing plot for week of {start_day}", file=discord.File(tf.name, tf.name)
+        )
 
 
 def beginning_of_week(day: datetime.date) -> datetime.date:
