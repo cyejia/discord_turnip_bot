@@ -75,7 +75,6 @@ async def show_graph(ctx, day_str: Optional[str] = None):
     end_day = start_day + datetime.timedelta(days=7)
 
     c = conn.cursor()
-
     # TODO: include Sunday?
     c.execute(
         """
