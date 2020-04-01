@@ -27,8 +27,11 @@ async def ping(ctx):
     await ctx.send("pong")
 
 
+# TODO: Remove/update price
 @bot.command()
 async def add_price(ctx, day: str, time_of_day: str, price: str):
+    """Add your price data. Takes in a date, "AM" or "PM", and your price. Example: /turnip add_price 4/1/2020 AM
+    """
     # TODO some sort of permission granting?
     new_time_of_day = time_of_day.upper()
     if new_time_of_day not in {"AM", "PM"}:
@@ -56,6 +59,7 @@ async def add_price(ctx, day: str, time_of_day: str, price: str):
         str(ctx.guild.id), user_id, ctx.author.name, day, new_time_of_day, price
     )
 
+    # TODO: Make this a reaction instead
     await ctx.send(
         f"Ok! Adding {day} {new_time_of_day} price for {ctx.author.name} as {price}"
     )
@@ -138,6 +142,25 @@ def db_add_price(
     price: int,
 ):
     c = conn.cursor()
+
+    c.execute(
+        """
+        SELECT *
+        FROM
+            prices
+        WHERE
+            server_id = %s AND
+            user_id = %s AND
+            day = %s AND
+            time_of_day = %s
+        """,
+        (server_id, user_id, day, time_of_day),
+    )
+    if c.fetchone() is not None:
+        # TODO: Update price?
+        c.close()
+        return
+
     c.execute(
         """
         INSERT INTO
