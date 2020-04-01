@@ -1,8 +1,14 @@
+import calendar
 import datetime
 import logging
 import os
+import tempfile
+
+from typing import List, Optional
 
 import discord
+import pandas as pd
+import plotly.graph_objects as go
 import psycopg2
 
 from dateutil.parser import parse as parse_date
@@ -22,13 +28,8 @@ async def ping(ctx):
 
 
 @bot.command()
-async def add_me(ctx):
-    db_add_user(str(ctx.author.id), str(ctx.guild.id))
-    await ctx.send(f"Adding {ctx.author.name} to {ctx.guild.name}'s turnip tracking'")
-
-
-@bot.command()
 async def add_price(ctx, day: str, time_of_day: str, price: str):
+    # TODO some sort of permission granting?
     new_time_of_day = time_of_day.upper()
     if new_time_of_day not in {"AM", "PM"}:
         await ctx.send("The first argument should be 'am', 'pm', 'AM', or 'PM'")
@@ -46,12 +47,14 @@ async def add_price(ctx, day: str, time_of_day: str, price: str):
         await ctx.send(f"Sorry, could not parse {day} as a date")
         return
 
+    # TODO: better messaging
+    if day.weekday == 6:
+        new_time_of_day = "AM"
+
     user_id = str(ctx.author.id)
-
-    if not db_user_exists(user_id):
-        db_add_user(user_id, str(ctx.guild.id))
-
-    db_add_price(user_id, day, new_time_of_day, price)
+    db_add_price(
+        str(ctx.guild.id), user_id, ctx.author.name, day, new_time_of_day, price
+    )
 
     await ctx.send(
         f"Ok! Adding {day} {new_time_of_day} price for {ctx.author.name} as {price}"
@@ -59,44 +62,116 @@ async def add_price(ctx, day: str, time_of_day: str, price: str):
 
 
 @bot.command()
-async def show_graph(ctx, time: str, price: str):
-    await ctx.send("Not implemented :(")
+async def show_graph(ctx, day_str: Optional[str] = None):
+    if day_str is not None:
+        day = parse_date(day, fuzzy=True).date()
+    else:
+        day = datetime.date.today()
 
+    if day.weekday() == 6:
+        day = day - datetime.timedelta(days=-7)
 
-def db_user_exists(user_id: str) -> bool:
+    start_day = beginning_of_week(day)
+    end_day = start_day + datetime.timedelta(days=7)
+
     c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
-    exists = c.fetchone() is not None
-    c.close()
-    return exists
 
-
-def db_add_user(user_id: str, server_id: str):
-    c = conn.cursor()
-
-    c.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
-    if c.fetchone() is None:
-        c.execute("INSERT INTO users (user_id) VALUES (%s)", (user_id,))
-
+    # TODO: include Sunday?
     c.execute(
-        "SELECT * FROM servers WHERE user_id = %s AND server_id = %s",
-        (user_id, server_id),
+        """
+        SELECT
+           server_id,
+           user_id,
+           user_name,
+           day,
+           day_of_week,
+           time_of_day,
+           price
+        FROM
+            prices
+        WHERE
+            server_id = %s AND
+            day > %s AND
+            day < %s
+        ORDER BY
+            day, time_of_day
+    """,
+        (str(ctx.guild.id), start_day, end_day),
     )
-    if c.fetchone() is None:
-        c.execute(
-            "INSERT INTO servers (user_id, server_id) VALUES (%s, %s)",
-            (user_id, server_id),
+    df = pd.DataFrame(
+        c.fetchall(),
+        columns=[
+            "server_id",
+            "user_id",
+            "user_name",
+            "day",
+            "day_of_week",
+            "time_of_day",
+            "price",
+        ],
+    )
+    c.close()
+
+    df["day_time"] = df["day_of_week"] + " " + df["time_of_day"]
+    df2 = df.pivot(index="day_time", columns="user_id", values="price")
+    df2 = df2.reindex(pd.unique(df["day_time"]))
+
+    fig = go.Figure()
+    for user_id in df2.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=df2.index,
+                y=df2[user_id],
+                name=user_id,  # Style name/legend entry with html tags
+                connectgaps=False,  # override default to connect the gaps
+            )
         )
 
-    c.close()
+    with tempfile.NamedTemporaryFile(suffix=".png") as tf:
+        fig.write_image(tf.name)
+
+        await ctx.send("???", file=discord.File(tf.name, tf.name))
 
 
-def db_add_price(user_id: str, day: datetime.date, time_of_day: str, price: int):
+def beginning_of_week(day: datetime.date) -> datetime.date:
+    return day - datetime.timedelta(days=day.isoweekday() % 7)
+
+
+def db_add_price(
+    server_id: str,
+    user_id: str,
+    user_name: Optional[str],
+    day: datetime.date,
+    time_of_day: str,
+    price: int,
+):
     c = conn.cursor()
     c.execute(
-        "INSERT INTO prices (user_id, day, time_of_day, price) VALUES (%s, %s, %s, %s)",
-        (user_id, day, time_of_day, price),
+        """
+        INSERT INTO
+            prices (
+                server_id,
+                user_id,
+                user_name,
+                day,
+                day_of_week,
+                time_of_day,
+                price
+            )
+        VALUES
+            (%s, %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            server_id,
+            user_id,
+            user_name,
+            day,
+            calendar.day_name[day.weekday()],
+            time_of_day,
+            price,
+        ),
     )
+    conn.commit()
     c.close()
 
 
