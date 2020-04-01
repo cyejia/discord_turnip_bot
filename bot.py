@@ -129,12 +129,12 @@ async def show_graph(ctx, day_str: Optional[str] = None):
     c.close()
 
     df["day_time"] = df["day_of_week"] + " " + df["time_of_day"]
-    df2 = df.pivot(index="day_time", columns="user_id", values="price")
+    df2 = df.pivot(index="day_time", columns="user_name", values="price")
     df2 = df2.reindex(DAYS_PER_WEEK)
 
     fig, ax = plt.subplots()
 
-    df.plot(ax=ax)
+    df2.plot(ax=ax, style="o-")
 
     # plt.legend()
     # plt.plot()
