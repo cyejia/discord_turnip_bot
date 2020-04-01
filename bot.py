@@ -16,7 +16,22 @@ from discord.ext import commands
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
-
+DAYS_PER_WEEK = [
+    "Sunday",
+    "",
+    "Monday AM",
+    "Monday PM",
+    "Tuesday AM",
+    "Tuesday PM",
+    "Wednesday AM",
+    "Wednesday PM",
+    "Thursday AM",
+    "Thursday PM",
+    "Friday AM",
+    "Friday PM",
+    "Saturday AM",
+    "Saturday PM",
+]
 logging.basicConfig(level=logging.DEBUG)
 bot = commands.Bot(command_prefix="/turnip ")
 conn = psycopg2.connect(DATABASE_URL, sslmode="require")
@@ -115,26 +130,21 @@ async def show_graph(ctx, day_str: Optional[str] = None):
 
     df["day_time"] = df["day_of_week"] + " " + df["time_of_day"]
     df2 = df.pivot(index="day_time", columns="user_id", values="price")
-    df2 = df2.reindex(pd.unique(df["day_time"]))
+    df2 = df2.reindex(DAYS_PER_WEEK)
 
-    fig = plt.figure(figsize=(10, 5))
-    ax = fig.add_subplot(111)
+    fig, ax = plt.subplots()
 
-    ax.plot(x, x, c="b", marker="^", ls="--", label="Greedy", fillstyle="none")
-    ax.plot(x, x + 1, c="g", marker=(8, 2, 0), ls="--", label="Greedy Heuristic")
-    ax.plot(x, (x + 1) ** 2, c="k", ls="-", label="Random")
-    ax.plot(x, (x - 1) ** 2, c="r", marker="v", ls="-", label="GMC")
-    ax.plot(x, x ** 2 - 1, c="m", marker="o", ls="--", label="KSTW", fillstyle="none")
-    ax.plot(x, x - 1, c="k", marker="+", ls=":", label="DGYC")
+    df.plot(ax=ax)
 
-    plt.legend(loc=2)
-    for user_id in df2.columns:
-        plt.plot(df2.index, df2[user_id].values)
+    # plt.legend()
+    # plt.plot()
+    # for user_id in df2.columns:
+    #     plt.plot(df2.index, df2[user_id].values)
 
     with tempfile.NamedTemporaryFile(suffix=".png") as tf:
         fig.savefig(tf.name, bbox_inches="tight", dpi=150)
         plt.close(fig)
-        await ctx.send("???", file=discord.File(tf.name, tf.name))
+        await ctx.send("Showing plot for TODO", file=discord.File(tf.name, tf.name))
 
 
 def beginning_of_week(day: datetime.date) -> datetime.date:
