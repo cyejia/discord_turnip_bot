@@ -8,6 +8,7 @@ from typing import List, Optional
 
 import discord
 import pandas as pd
+import plotly
 import plotly.graph_objects as go
 import psycopg2
 
@@ -20,6 +21,7 @@ DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
 logging.basicConfig(level=logging.DEBUG)
 bot = commands.Bot(command_prefix="/turnip ")
 conn = psycopg2.connect(DATABASE_URL, sslmode="require")
+plotly.io.orca.config.executable = os.path.join(os.getcwd(), "node_modules/.bin/orca")
 
 
 @bot.command()
