@@ -7,9 +7,8 @@ import tempfile
 from typing import List, Optional
 
 import discord
+import matplotlib.pyplot as plt
 import pandas as pd
-import plotly
-import plotly.graph_objects as go
 import psycopg2
 
 from dateutil.parser import parse as parse_date
@@ -21,7 +20,6 @@ DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
 logging.basicConfig(level=logging.DEBUG)
 bot = commands.Bot(command_prefix="/turnip ")
 conn = psycopg2.connect(DATABASE_URL, sslmode="require")
-plotly.io.orca.config.executable = os.path.join(os.getcwd(), "node_modules/.bin/orca")
 
 
 @bot.command()
@@ -117,20 +115,13 @@ async def show_graph(ctx, day_str: Optional[str] = None):
     df2 = df.pivot(index="day_time", columns="user_id", values="price")
     df2 = df2.reindex(pd.unique(df["day_time"]))
 
-    fig = go.Figure()
+    fig = plt.figure(figsize=(10, 5))
     for user_id in df2.columns:
-        fig.add_trace(
-            go.Scatter(
-                x=df2.index,
-                y=df2[user_id],
-                name=user_id,  # Style name/legend entry with html tags
-                connectgaps=False,  # override default to connect the gaps
-            )
-        )
+        plt.plot(df2.index, df2[user_id].values)
 
     with tempfile.NamedTemporaryFile(suffix=".png") as tf:
-        fig.write_image(tf.name)
-
+        fig.savefig(tf.name, bbox_inches="tight", dpi=150)
+        plt.close(fig)
         await ctx.send("???", file=discord.File(tf.name, tf.name))
 
 
