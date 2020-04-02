@@ -18,7 +18,7 @@ from discord.ext import commands
 DATABASE_URL = os.environ["DATABASE_URL"]
 DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
 DAYS_PER_WEEK = [
-    "Sunday",
+    "Sunday AM",
     "",
     "Monday AM",
     "Monday PM",
@@ -236,7 +236,11 @@ def build_graph(ctx, df: pd.DataFrame):
 
     fig, ax = plt.subplots()
 
-    df2.plot(ax=ax, style="o-", xticks=df.index, xlim=(0, 14), rot=60)
+    df2.plot(
+        ax=ax, style="o-", xlim=(0, 14),
+    )
+    ax.set_xticks(list(range(14)))
+    ax.set_xticklabels(df2.index, rotation=60, ha="right")
     plt.legend(loc=2, prop={"size": 6})
 
     plt.tight_layout()
