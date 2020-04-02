@@ -71,9 +71,8 @@ async def add_price(ctx, day: str, time_of_day: str, price: str):
         new_time_of_day = "AM"
 
     user_id = str(ctx.author.id)
-    db_add_price(
-        str(ctx.guild.id), user_id, ctx.author.name, day, new_time_of_day, price
-    )
+    db_add_user_server(user_id, str(ctx.guild.id))
+    db_add_price(user_id, day, new_time_of_day, price)
 
     # TODO: Make this a reaction instead
     await ctx.message.add_reaction("👍")
@@ -92,20 +91,26 @@ async def show_graph(ctx, day_str: Optional[str] = None):
     start_day = beginning_of_week(day)
     end_day = start_day + datetime.timedelta(days=7)
 
+    user_id = str(ctx.author.id)
+    server_id = str(ctx.guild.id)
+    db_add_user_server(user_id, server_id)
+
     c = conn.cursor()
 
     c.execute(
         """
         SELECT
-           server_id,
-           user_id,
-           user_name,
+           prices.user_id,
            day,
            day_of_week,
            time_of_day,
            price
         FROM
             prices
+        JOIN
+            user_servers
+        ON
+            prices.user_id = user_servers.user_id
         WHERE
             server_id = %s AND
             day >= %s AND
@@ -113,19 +118,11 @@ async def show_graph(ctx, day_str: Optional[str] = None):
         ORDER BY
             day, time_of_day
     """,
-        (str(ctx.guild.id), start_day, end_day),
+        (server_id, start_day, end_day),
     )
     df = pd.DataFrame(
         c.fetchall(),
-        columns=[
-            "server_id",
-            "user_id",
-            "user_name",
-            "day",
-            "day_of_week",
-            "time_of_day",
-            "price",
-        ],
+        columns=["user_id", "day", "day_of_week", "time_of_day", "price",],
     )
     c.close()
 
@@ -143,13 +140,38 @@ def beginning_of_week(day: datetime.date) -> datetime.date:
     return day - datetime.timedelta(days=day.isoweekday() % 7)
 
 
+def db_add_user_server(user_id: str, server_id: str):
+    c = conn.cursor()
+
+    c.execute(
+        """
+        SELECT *
+        FROM
+            user_servers
+        WHERE
+            user_id = %s AND
+            server_id = %s
+        """,
+        (user_id, server_id),
+    )
+
+    row = c.fetchone()
+    if row is None:
+        c.execute(
+            """
+        INSERT INTO
+            user_servers (user_id, server_id)
+        VALUES
+            (%s, %s)
+        """,
+            (user_id, server_id),
+        )
+        conn.commit()
+    c.close()
+
+
 def db_add_price(
-    server_id: str,
-    user_id: str,
-    user_name: Optional[str],
-    day: datetime.date,
-    time_of_day: str,
-    price: int,
+    user_id: str, day: datetime.date, time_of_day: str, price: int,
 ):
     c = conn.cursor()
 
@@ -159,12 +181,11 @@ def db_add_price(
         FROM
             prices
         WHERE
-            server_id = %s AND
             user_id = %s AND
             day = %s AND
             time_of_day = %s
         """,
-        (server_id, user_id, day, time_of_day),
+        (user_id, day, time_of_day),
     )
     if c.fetchone() is not None:
         # TODO: Update price?
@@ -175,26 +196,16 @@ def db_add_price(
         """
         INSERT INTO
             prices (
-                server_id,
                 user_id,
-                user_name,
                 day,
                 day_of_week,
                 time_of_day,
                 price
             )
         VALUES
-            (%s, %s, %s, %s, %s, %s, %s)
+            (%s, %s, %s, %s, %s)
         """,
-        (
-            server_id,
-            user_id,
-            user_name,
-            day,
-            calendar.day_name[day.weekday()],
-            time_of_day,
-            price,
-        ),
+        (user_id, day, calendar.day_name[day.weekday()], time_of_day, price,),
     )
     conn.commit()
     c.close()
