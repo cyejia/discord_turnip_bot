@@ -4,7 +4,8 @@ import logging
 import os
 import tempfile
 
-from typing import List, Optional
+from collections import defaultdict
+from typing import Dict, List, Optional
 
 import discord
 import matplotlib.pyplot as plt
@@ -128,15 +129,7 @@ async def show_graph(ctx, day_str: Optional[str] = None):
     )
     c.close()
 
-    df["day_time"] = df["day_of_week"] + " " + df["time_of_day"]
-    df2 = df.pivot(index="day_time", columns="user_name", values="price")
-    df2 = df2.reindex(DAYS_PER_WEEK)
-
-    fig, ax = plt.subplots()
-
-    df2.plot(ax=ax, style="o-", xticks=df.index, xlim=(0, 14), rot=60)
-
-    plt.tight_layout()
+    fig = build_graph(ctx, df)
 
     with tempfile.NamedTemporaryFile(suffix=".png") as tf:
         fig.savefig(tf.name, bbox_inches="tight", dpi=150)
@@ -205,6 +198,50 @@ def db_add_price(
     )
     conn.commit()
     c.close()
+
+
+def get_user_id_display_name_map(ctx, df: pd.DataFrame) -> Dict[str, str]:
+    turnip_users = pd.unique(df["user_id"])
+    members = [member for member in ctx.guild.members if str(member.id) in turnip_users]
+
+    user_id_member_map = {
+        str(member.id): (member.display_name, member.name, member.discriminator)
+        for member in members
+    }
+
+    display_name_counts = defaultdict(int)
+    use_discriminator = False
+
+    for user_id, (display_name, name, discriminator) in user_id_member_map.items():
+        display_name_counts[display_name] = display_name_counts[display_name] + 1
+        if display_name_counts[display_name] > 1:
+            use_discriminator = True
+            break
+
+    return {
+        user_id: f"{display_name} ({name}#{discriminator})"
+        if use_discriminator
+        else display_name
+        for user_id, (display_name, name, discriminator) in user_id_member_map.items()
+    }
+
+
+def build_graph(ctx, df: pd.DataFrame):
+    user_name_map = get_user_id_display_name_map(ctx, df)
+    df["User"] = df["user_id"].map(user_name_map)
+    df["Timepoint"] = df["day_of_week"] + " " + df["time_of_day"]
+
+    df2 = df.pivot(index="Timepoint", columns="User", values="price")
+    df2 = df2.reindex(DAYS_PER_WEEK)
+
+    fig, ax = plt.subplots()
+
+    df2.plot(ax=ax, style="o-", xticks=df.index, xlim=(0, 14), rot=60)
+    plt.legend(loc=2, prop={"size": 6})
+
+    plt.tight_layout()
+
+    return fig
 
 
 bot.run(DISCORD_TOKEN)
