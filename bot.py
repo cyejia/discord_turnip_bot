@@ -5,6 +5,7 @@ import os
 import tempfile
 
 from collections import defaultdict
+from enum import Enum
 from typing import Dict, List, Optional
 
 import discord
@@ -38,9 +39,46 @@ bot = commands.Bot(command_prefix="/turnip ")
 conn = psycopg2.connect(DATABASE_URL, sslmode="require")
 
 
+class MarketPatterns(Enum):
+    random = "random"
+    all_decrease = "all_decrease"
+    small_bump = "small_bump"
+    big_bump = "big_bump"
+
+
 @bot.command()
 async def ping(ctx):
     await ctx.send("pong")
+
+
+@bot.command()
+async def advice(ctx):
+    await ctx.send("TODO")
+
+
+@bot.command()
+async def remove_me(ctx):
+    """Remove all data about your prices"""
+    user_id = str(ctx.author.id)
+    c.execute(
+        """
+        DELETE FROM user_servers
+        WHERE
+            user_id = %s
+        """,
+        (user_id,),
+    )
+    c.execute(
+        """
+        DELETE FROM prices
+        WHERE
+            user_id = %s
+        """,
+        (user_id,),
+    )
+    conn.commit()
+    c.close()
+    await ctx.message.add_reaction("🗑")
 
 
 # TODO: Remove/update price
