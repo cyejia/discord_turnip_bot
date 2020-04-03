@@ -37,7 +37,7 @@ DAYS_PER_WEEK = [
     "Saturday AM",
     "Saturday PM",
 ]
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 bot = commands.Bot(command_prefix=["/turnip ", "/t "])
 conn = psycopg2.connect(DATABASE_URL, sslmode="require")
 
