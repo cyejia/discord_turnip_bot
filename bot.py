@@ -2,6 +2,7 @@ import calendar
 import datetime
 import logging
 import os
+import difflib
 import tempfile
 
 from collections import defaultdict
@@ -15,6 +16,8 @@ import psycopg2
 
 from dateutil.parser import parse as parse_date
 from discord.ext import commands
+
+from data.furniture import furniture_info
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
@@ -295,6 +298,72 @@ def build_graph(ctx, df: pd.DataFrame):
     plt.tight_layout()
 
     return fig
+
+
+@bot.command()
+async def hot(ctx, fuzzy_furniture_name: str):
+    message = get_furniture_message(fuzzy_furniture_name)
+
+    await ctx.send(message)
+
+
+def get_furniture_message(fuzzy_furniture_name: str):
+    furniture_name = get_best_match_furniture(fuzzy_furniture_name)
+
+    if not furniture_name:
+        message = f"No match found for {fuzzy_furniture_name}"
+    else:
+        message = furniture_name.title()
+
+        if furniture_info[furniture_name]["materials"]:
+            message = message + " " + get_furniture_materials(furniture_name)
+        else:
+            message = message + " (no craft info)"
+
+        if furniture_info[furniture_name]["sell"]:
+            price_string = furniture_info[furniture_name]["sell"]
+            if "each" in price_string:
+                assert " (each)" in price_string
+                double = str(int(price_string.replace(" (each)", "")) * 2) + " (each)"
+            else:
+                double = int(price_string) * 2
+            message = message + f", sells for {price_string} x 2 = {double} bells"
+        else:
+            message = message + ", no price info"
+
+    return message
+
+
+def get_best_match_furniture(fuzzy_furniture_name: str):
+    matches = [
+        (difflib.SequenceMatcher(None, fuzzy_furniture_name, name).ratio(), name)
+        for name in furniture_info.keys()
+    ]
+    match_ratio, best_match_furniture = sorted(matches, reverse=True)[0]
+
+    if match_ratio < 0.5:
+        return None
+    else:
+        return best_match_furniture
+
+
+def get_furniture_materials(furniture_name: str):
+    """
+    recursive method
+    """
+    materials = []
+    for material in furniture_info[furniture_name]["materials"]:
+        material_string = material["number"] + " " + material["name"]
+        if material["name"] in furniture_info:
+            material_string = (
+                material_string + " " + get_furniture_materials(material["name"])
+            )
+        else:
+            pass  # base case
+
+        materials.append(material_string)
+
+    return "(" + ", ".join(materials) + ")"
 
 
 bot.run(DISCORD_TOKEN)
