@@ -161,9 +161,13 @@ async def show_graph(ctx, day_str: Optional[str] = None):
     """,
         (server_id, start_day, end_day),
     )
+    rows = c.fetchall()
+    if len(rows) == 0:
+        await ctx.send("Sorry, there's no data for this server!")
+        return
+
     df = pd.DataFrame(
-        c.fetchall(),
-        columns=["user_id", "day", "day_of_week", "time_of_day", "price",],
+        rows, columns=["user_id", "day", "day_of_week", "time_of_day", "price",],
     )
     c.close()
 
