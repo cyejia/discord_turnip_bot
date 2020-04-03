@@ -45,7 +45,6 @@ To get a local copy up and running follow these steps.
 
 ### Prerequisites
 
-- A [Heroku](https://www.heroku.com/) account to deploy
 - An environment with Python 3.8, for example using [Conda](https://conda.io/en/latest/)
 - A .env file with the Discord token (PM me)
 
