@@ -7,7 +7,7 @@ import psycopg2
 
 from discord.ext import commands
 
-from data.furniture import furniture_prices
+from data.furniture import furniture_info
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
@@ -49,44 +49,69 @@ async def show_graph(ctx, time: str, price: str):
 
 
 @bot.command()
-async def hot(ctx, furniture_name: str):
-    best_match_furniture, price = get_furniture_price(furniture_name)
+async def hot(ctx, fuzzy_furniture_name: str):
+    message = get_furniture_message(fuzzy_furniture_name)
 
-    if not best_match_furniture:
-        message = f"No match found for {furniture_name}"
+    await ctx.send(message)
+
+
+def get_furniture_message(fuzzy_furniture_name: str):
+    furniture_name = get_best_match_furniture(fuzzy_furniture_name)
+
+    if not furniture_name:
+        message = f"No match found for {fuzzy_furniture_name}"
     else:
-        if price:
-            message = f"{best_match_furniture}, sells for {price} x 2 = {price * 2}"
+        message = furniture_name.title()
+
+        if furniture_info[furniture_name]["materials"]:
+            message = message + " " + get_furniture_materials(furniture_name)
         else:
-            message = f"No price found for {best_match_furniture}"
+            message = message + " (no craft info)"
 
-        await ctx.send(message)
+        if furniture_info[furniture_name]["sell"]:
+            price_string = furniture_info[furniture_name]["sell"]
+            if "each" in price_string:
+                assert " (each)" in price_string
+                double = str(int(price_string.replace(" (each)", "")) * 2) + " (each)"
+            else:
+                double = int(price_string) * 2
+            message = message + f", sells for {price_string} x 2 = {double} bells"
+        else:
+            message = message + ", no price info"
+
+    return message
 
 
-def get_furniture_price(furniture_name: str):
-    """
-    Returns (best_match_furniture_name, price)
-    """
-
-    def bells_to_int(price):
-        return int(price.replace(" Bells", "").replace(",", ""))
-
+def get_best_match_furniture(fuzzy_furniture_name: str):
     matches = [
-        (difflib.SequenceMatcher(None, furniture_name, name).ratio(), name)
-        for name in furniture_prices.keys()
+        (difflib.SequenceMatcher(None, fuzzy_furniture_name, name).ratio(), name)
+        for name in furniture_info.keys()
     ]
     match_ratio, best_match_furniture = sorted(matches, reverse=True)[0]
 
     if match_ratio < 0.5:
-        return None, None
+        return None
     else:
-        price_string = furniture_prices[best_match_furniture]
+        return best_match_furniture
 
-        if price_string == "" or price_string == "*":
-            return best_match_furniture, None
+
+def get_furniture_materials(furniture_name: str):
+    """
+    recursive method
+    """
+    materials = []
+    for material in furniture_info[furniture_name]["materials"]:
+        material_string = material["number"] + " " + material["name"]
+        if material["name"] in furniture_info:
+            material_string = (
+                material_string + " " + get_furniture_materials(material["name"])
+            )
         else:
-            price = bells_to_int(price_string)
-            return best_match_furniture, price
+            pass  # base case
+
+        materials.append(material_string)
+
+    return "(" + ", ".join(materials) + ")"
 
 
 bot.run(DISCORD_TOKEN)
