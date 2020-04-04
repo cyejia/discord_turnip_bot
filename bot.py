@@ -49,12 +49,12 @@ class MarketPatterns(Enum):
     big_bump = "big_bump"
 
 
-@bot.command()
+@bot.command(brief="pong")
 async def ping(ctx):
     await ctx.send("pong")
 
 
-@bot.command()
+# @bot.command()
 async def advice(ctx):
     await ctx.send("TODO")
 
@@ -85,10 +85,16 @@ async def remove_me(ctx):
 
 
 # TODO: Remove/update price
-@bot.command()
+@bot.command(
+    aliases=["add"],
+    usage='<date> <"am", "pm"> <price>',
+    brief="Add price data. ex: /t add 4/1/2020 am 100",
+    help="""Add your turnip price for a day and time (AM or PM).
+    The date should not have any spaces in it.
+
+    ex: /t add 4/1/2020 am 100""",
+)
 async def add_price(ctx, day: str, time_of_day: str, price: str):
-    """Add your price data. Takes in a date, "AM" or "PM", and your price. Example: /turnip add_price 4/1/2020 AM
-    """
     # TODO some sort of permission granting?
     new_time_of_day = time_of_day.upper()
     if new_time_of_day not in {"AM", "PM"}:
@@ -113,18 +119,42 @@ async def add_price(ctx, day: str, time_of_day: str, price: str):
 
     user_id = str(ctx.author.id)
     db_add_user_server(user_id, str(ctx.guild.id))
-    db_add_price(user_id, day, new_time_of_day, price)
-
-    # TODO: Make this a reaction instead
-    await ctx.message.add_reaction("👍")
-
-
-@bot.command()
-async def show_graph(ctx, day_str: Optional[str] = None):
-    if day_str is not None:
-        day = parse_date(day, fuzzy=True).date()
+    if db_add_price(user_id, day, new_time_of_day, price):
+        await ctx.message.add_reaction("👍")
     else:
-        day = datetime.date.today()
+        await ctx.send("Sorry, you've already added price information for this day.")
+
+
+@bot.command(
+    aliases=["show", "sg"],
+    usage='[date] ["me"]',
+    brief="Show graph of turnip prices for this week",
+    help="""Show graph of turnip prices for a week.
+    If date is specified, show graph for that week.
+    If "me" is provided as an argument, show graph for just the caller (and not the whole server).
+
+    ex:
+    - /t sg
+        (show graph for this week for everyone in server)
+    - /t sg 4/1/2020
+        (show graph for week of 4/1/2020 for everyone in server)
+    - /t sg me
+        (show graph for this week for just the caller)
+    - /t sg 4/1/2020 me
+        (show graph for week of 4/1/2020 for just the caller)
+    """,
+)
+async def show_graph(ctx, *args):
+    day = datetime.date.today()
+    user_only = False
+    if len(args) == 1:
+        try:
+            day = parse_date(args[0], fuzzy=True).date()
+        except:
+            user_only = args[0] == "me"
+    elif len(args) == 2:
+        day = parse_date(args[0], fuzzy=True).date()
+        user_only = args[1] == "me"
 
     if day.weekday() == 6:
         day = day - datetime.timedelta(days=-7)
@@ -138,32 +168,53 @@ async def show_graph(ctx, day_str: Optional[str] = None):
 
     c = conn.cursor()
 
-    c.execute(
-        """
-        SELECT
-           prices.user_id,
-           day,
-           day_of_week,
-           time_of_day,
-           price
-        FROM
-            prices
-        JOIN
-            user_servers
-        ON
-            prices.user_id = user_servers.user_id
-        WHERE
-            server_id = %s AND
-            day >= %s AND
-            day < %s
-        ORDER BY
-            day, time_of_day
-    """,
-        (server_id, start_day, end_day),
-    )
+    if user_only:
+        c.execute(
+            """
+            SELECT
+            user_id,
+            day,
+            day_of_week,
+            time_of_day,
+            price
+            FROM
+                prices
+            WHERE
+                user_id = %s AND
+                day >= %s AND
+                day < %s
+            ORDER BY
+                day, time_of_day
+            """,
+            (user_id, start_day, end_day),
+        )
+    else:
+        c.execute(
+            """
+            SELECT
+            prices.user_id,
+            day,
+            day_of_week,
+            time_of_day,
+            price
+            FROM
+                prices
+            JOIN
+                user_servers
+            ON
+                prices.user_id = user_servers.user_id
+            WHERE
+                server_id = %s AND
+                day >= %s AND
+                day < %s
+            ORDER BY
+                day, time_of_day
+            """,
+            (server_id, start_day, end_day),
+        )
     rows = c.fetchall()
     if len(rows) == 0:
-        await ctx.send("Sorry, there's no data for this server!")
+        await ctx.send("Sorry, there's no data for these parameters!")
         return
 
     df = pd.DataFrame(
@@ -217,7 +268,7 @@ def db_add_user_server(user_id: str, server_id: str):
 
 def db_add_price(
     user_id: str, day: datetime.date, time_of_day: str, price: int,
-):
+) -> bool:
     c = conn.cursor()
 
     c.execute(
@@ -235,7 +286,7 @@ def db_add_price(
     if c.fetchone() is not None:
         # TODO: Update price?
         c.close()
-        return
+        return False
 
     c.execute(
         """
@@ -254,6 +305,7 @@ def db_add_price(
     )
     conn.commit()
     c.close()
+    return True
 
 
 def get_user_id_display_name_map(ctx, df: pd.DataFrame) -> Dict[str, str]:
@@ -304,8 +356,11 @@ def build_graph(ctx, df: pd.DataFrame):
     return fig
 
 
-@bot.command()
-async def hot(ctx, fuzzy_furniture_name: str):
+@bot.command(
+    usage="<hot item>", brief="Show crafting and price information for hot items."
+)
+async def hot(ctx, *args):
+    fuzzy_furniture_name = " ".join(args)
     message = get_furniture_message(fuzzy_furniture_name)
 
     await ctx.send(message)
