@@ -7,7 +7,7 @@ import tempfile
 
 from collections import defaultdict
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import discord
 import matplotlib.pyplot as plt
@@ -18,6 +18,7 @@ from dateutil.parser import parse as parse_date
 from discord.ext import commands
 
 from data.furniture import furniture_info
+from data.critters import fish_info, bug_info
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
@@ -367,7 +368,7 @@ async def hot(ctx, *args):
 
 
 def get_furniture_message(fuzzy_furniture_name: str):
-    furniture_name = get_best_match_furniture(fuzzy_furniture_name)
+    furniture_name = get_best_match_item(fuzzy_furniture_name, furniture_info)
 
     if not furniture_name:
         message = f"No match found for {fuzzy_furniture_name}"
@@ -393,17 +394,17 @@ def get_furniture_message(fuzzy_furniture_name: str):
     return message
 
 
-def get_best_match_furniture(fuzzy_furniture_name: str):
+def get_best_match_item(fuzzy_item_name: str, item_info: Dict[str, Dict[str, Any]]):
     matches = [
-        (difflib.SequenceMatcher(None, fuzzy_furniture_name, name).ratio(), name)
-        for name in furniture_info.keys()
+        (difflib.SequenceMatcher(None, fuzzy_item_name, name).ratio(), name)
+        for name in item_info.keys()
     ]
-    match_ratio, best_match_furniture = sorted(matches, reverse=True)[0]
+    match_ratio, best_match_item = sorted(matches, reverse=True)[0]
 
     if match_ratio < 0.5:
         return None
     else:
-        return best_match_furniture
+        return best_match_item
 
 
 def get_furniture_materials(furniture_name: str):
@@ -423,6 +424,33 @@ def get_furniture_materials(furniture_name: str):
         materials.append(material_string)
 
     return "(" + ", ".join(materials) + ")"
+
+
+@bot.command(usage="<fish>", brief="Show price for fish.")
+async def fish(ctx, *args):
+    fuzzy_fish_name = " ".join(args)
+    message = get_critter_message(fuzzy_fish_name, fish_info)
+    await ctx.send(message)
+
+
+@bot.command(usage="<bug>", brief="Show price for bug.")
+async def bug(ctx, *args):
+    fuzzy_bug_name = " ".join(args)
+    message = get_critter_message(fuzzy_bug_name, bug_info)
+    await ctx.send(message)
+
+
+def get_critter_message(
+    fuzzy_critter_name: str, critter_info: Dict[str, Dict[str, Any]]
+) -> str:
+    critter_name = get_best_match_item(fuzzy_critter_name, critter_info)
+
+    if critter_name is None:
+        message = f"No match found for {fuzzy_critter_name}"
+    else:
+        price = critter_info[critter_name]["price"]
+        message = f"{critter_name} sells for {price} bells"
+    return message
 
 
 bot.run(DISCORD_TOKEN)
