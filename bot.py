@@ -228,7 +228,7 @@ async def show_graph(ctx, *args):
     )
     c.close()
 
-    fig = build_graph(df)
+    fig = build_graph(ctx, df)
 
     with tempfile.NamedTemporaryFile(suffix=".png") as tf:
         fig.savefig(tf.name, bbox_inches="tight", dpi=150)
@@ -380,7 +380,9 @@ def analyze_prices(df: pd.DataFrame):
     return df
 
 
-def build_graph(df: pd.DataFrame):
+def build_graph(ctx, df: pd.DataFrame):
+    # ctx isn't used, but needs to be passed
+
     df = analyze_prices(df)
     fig, ax = plt.subplots()
 
