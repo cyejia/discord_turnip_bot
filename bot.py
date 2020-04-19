@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 import discord
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
 import psycopg2
 
 from dateutil.parser import parse as parse_date
@@ -22,6 +23,10 @@ from data.critters import fish_info, bug_info
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
+
+# the code makes the followingn assumptions about DAYS_PER_WEEK:
+# - that the first index is the base price
+# - "Monday AM" is hardcoded
 DAYS_PER_WEEK = [
     "Sunday AM",
     "",
@@ -223,7 +228,7 @@ async def show_graph(ctx, *args):
     )
     c.close()
 
-    fig = build_graph(ctx, df)
+    fig = build_graph(df)
 
     with tempfile.NamedTemporaryFile(suffix=".png") as tf:
         fig.savefig(tf.name, bbox_inches="tight", dpi=150)
@@ -335,26 +340,100 @@ def get_user_id_display_name_map(ctx, df: pd.DataFrame) -> Dict[str, str]:
     }
 
 
-def build_graph(ctx, df: pd.DataFrame):
+def analyze_prices(df: pd.DataFrame):
+    # format columns
     user_name_map = get_user_id_display_name_map(ctx, df)
     df["User"] = df["user_id"].map(user_name_map)
     df["Timepoint"] = df["day_of_week"] + " " + df["time_of_day"]
 
-    df2 = df.pivot(index="Timepoint", columns="User", values="price")
-    df2 = df2.reindex(DAYS_PER_WEEK)
+    # calculate perent of base
+    def get_percent_of_base(row, base_prices):
+        if row["User"] in base_prices and row["Timepoint"] != DAYS_PER_WEEK[0]:
+            return row["price"] / base_prices[row["User"]] * 100
+        else:
+            return None
 
+    base_prices = {
+        row["User"]: row["price"]
+        for _, row in df[df["Timepoint"] == DAYS_PER_WEEK[0]].iterrows()
+    }
+    df["percent_of_base"] = df.apply(
+        lambda row: get_percent_of_base(row, base_prices), axis=1
+    )
+
+    # calculate and merge in possible patterns per user
+    # this calculates possible patterns using all data present, not incrementally per half day. thus, for a given user, the "patterns" column has the same value in every row
+    patterns_data = {
+        "User": [],
+        "patterns": [],
+        "patterns_reason": [],
+    }
+    for user, group in df.groupby("User"):
+        patterns, reason = get_possible_patterns(
+            pd.Series(data=group["percent_of_base"].tolist(), index=group["Timepoint"])
+        )
+        patterns_data["User"].append(user)
+        patterns_data["patterns"].append(patterns)
+        patterns_data["patterns_reason"].append(reason)
+    patterns_df = pd.DataFrame(patterns_data)
+    df = pd.merge(df, patterns_df, how="left", on="User")
+    return df
+
+
+def build_graph(df: pd.DataFrame):
+    df = analyze_prices(df)
     fig, ax = plt.subplots()
+
+    # label points with price percentage relative to base
+    for _, row in df.iterrows():
+        if not np.isnan(row["percent_of_base"]):
+            ax.annotate(
+                "{:.0f}%".format(row["percent_of_base"]),
+                xy=(DAYS_PER_WEEK.index(row["Timepoint"]), row["price"]),
+            )
+
+    # include the pattern in the legend if it is known
+    def format_legend(row):
+        if len(row["patterns"]) == 1:
+            return row["User"] + " (" + row["patterns"][0].value + ")"
+        return row["User"]
+
+    df["legend"] = df.apply(format_legend, axis=1)
+
+    # pivot to plot
+    df2 = df.pivot(index="Timepoint", columns="legend", values="price")
+    df2 = df2.reindex(DAYS_PER_WEEK)
 
     df2.plot(
         ax=ax, style="o-", xlim=(0, 14),
     )
     ax.set_xticks(list(range(14)))
     ax.set_xticklabels(df2.index, rotation=60, ha="right")
+
     plt.legend(loc=2, prop={"size": 6})
 
     plt.tight_layout()
 
     return fig
+
+
+def get_possible_patterns(percent_of_base: pd.Series) -> (List, str):
+    """
+    :param percent_of_base: series where index is Timepoint and value is price
+    :return: tuple of (list of possible patterns, reason for conclusion)
+    """
+    if "Monday AM" in percent_of_base.index:
+        if percent_of_base.loc["Monday AM"] > 90:
+            return [MarketPatterns.random], "Initial price >90%"
+        elif percent_of_base.loc["Monday AM"] < 85:
+            if percent_of_base.loc["Monday AM"] < 60:
+                return [MarketPatterns.small_bump], "Initial price < 60%"
+            else:
+                return (
+                    [MarketPatterns.small_bump, MarketPatterns.random],
+                    "Initial price < 85%, likely small spike",
+                )
+    return [x for x in MarketPatterns], ""
 
 
 @bot.command(
@@ -451,6 +530,16 @@ def get_critter_message(
         price = critter_info[critter_name]["price"]
         message = f"{critter_name} sells for {price} bells"
     return message
+
+
+@bot.command(brief="List turnip price patterns.")
+async def patterns(ctx, *args):
+    message = """Large spike: 85-90% decreasing 3-5%, for 1-7 half days. Sell on 3rd increase for 200-600%.
+    Small spike: 40-90% decreasing 3-5%, for 0-7 half days. Two halves 90-140%, sell on any of next three halves at 140-200%
+    Decreasing: 85-90% decreasing 3-5%
+    Random: flips between 90-140% (initially 0-6 half days), and 60-80% decreasing 4-10%
+    """
+    await ctx.send(message)
 
 
 bot.run(DISCORD_TOKEN)
