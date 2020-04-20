@@ -44,7 +44,7 @@ DAYS_PER_WEEK = [
     "Saturday PM",
 ]
 logging.basicConfig(level=logging.WARNING)
-bot = commands.Bot(command_prefix=["/turnip ", "/t "])
+bot = commands.Bot(command_prefix=["/turnip ", "/t ", "."])
 conn = psycopg2.connect(DATABASE_URL, sslmode="require")
 
 
@@ -340,7 +340,7 @@ def get_user_id_display_name_map(ctx, df: pd.DataFrame) -> Dict[str, str]:
     }
 
 
-def analyze_prices(df: pd.DataFrame):
+def analyze_prices(ctx, df: pd.DataFrame):
     # format columns
     user_name_map = get_user_id_display_name_map(ctx, df)
     df["User"] = df["user_id"].map(user_name_map)
@@ -383,7 +383,7 @@ def analyze_prices(df: pd.DataFrame):
 def build_graph(ctx, df: pd.DataFrame):
     # ctx isn't used, but needs to be passed
 
-    df = analyze_prices(df)
+    df = analyze_prices(ctx, df)
     fig, ax = plt.subplots()
 
     # label points with price percentage relative to base
