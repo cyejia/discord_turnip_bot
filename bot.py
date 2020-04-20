@@ -132,7 +132,7 @@ async def add_price(ctx, day: str, time_of_day: str, price: str):
 
 
 @bot.command(
-    aliases=["show", "sg"],
+    aliases=["show", "sg", "graph"],
     usage='[date] ["me"]',
     brief="Show graph of turnip prices for this week",
     help="""Show graph of turnip prices for a week.
@@ -151,6 +151,21 @@ async def add_price(ctx, day: str, time_of_day: str, price: str):
     """,
 )
 async def show_graph(ctx, *args):
+    df = get_turnip_data(ctx, args)
+    fig = build_graph(ctx, df)
+
+    with tempfile.NamedTemporaryFile(suffix=".png") as tf:
+        fig.savefig(tf.name, bbox_inches="tight", dpi=150)
+        plt.close(fig)
+        await ctx.send(
+            f"Showing plot for week of {start_day}", file=discord.File(tf.name, tf.name)
+        )
+
+
+def get_turnip_data(ctx, *args):
+    """
+    Params match that of show_graph
+    """
     day = datetime.date.today()
     user_only = False
     if len(args) == 1:
@@ -227,15 +242,7 @@ async def show_graph(ctx, *args):
         rows, columns=["user_id", "day", "day_of_week", "time_of_day", "price",],
     )
     c.close()
-
-    fig = build_graph(ctx, df)
-
-    with tempfile.NamedTemporaryFile(suffix=".png") as tf:
-        fig.savefig(tf.name, bbox_inches="tight", dpi=150)
-        plt.close(fig)
-        await ctx.send(
-            f"Showing plot for week of {start_day}", file=discord.File(tf.name, tf.name)
-        )
+    return df
 
 
 def beginning_of_week(day: datetime.date) -> datetime.date:
@@ -397,7 +404,7 @@ def build_graph(ctx, df: pd.DataFrame):
     # include the pattern in the legend if it is known
     def format_legend(row):
         if len(row["patterns"]) == 1:
-            return row["User"] + " (" + row["patterns"][0].value + ")"
+            return f"{row['User']} ({row['patterns'][0].value}, {row['patterns_reason'][0]})"
         return row["User"]
 
     df["legend"] = df.apply(format_legend, axis=1)
@@ -534,7 +541,7 @@ def get_critter_message(
     return message
 
 
-@bot.command(brief="List turnip price patterns.")
+@bot.command(aliases=["pattern"], brief="List turnip price patterns.")
 async def patterns(ctx, *args):
     message = """Large spike: 85-90% decreasing 3-5%, for 1-7 half days. Sell on 3rd increase for 200-600%.
     Small spike: 40-90% decreasing 3-5%, for 0-7 half days. Two halves 90-140%, sell on any of next three halves at 140-200%
