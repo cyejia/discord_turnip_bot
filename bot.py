@@ -166,6 +166,9 @@ async def show_graph(ctx, *args):
         start_day, end_day = get_week_start_end(day)
 
         df = get_turnip_data(ctx, start_day, end_day, user_only)
+        if df is None:
+            await ctx.send("Sorry, there's no data for these parameters!")
+            
         fig = build_graph(ctx, df)
 
         with tempfile.NamedTemporaryFile(suffix=".png") as tf:
@@ -235,8 +238,7 @@ def get_turnip_data(ctx, start_day, end_day, user_only=False):
         )
     rows = c.fetchall()
     if len(rows) == 0:
-        await ctx.send("Sorry, there's no data for these parameters!")
-        return
+        return None
 
     df = pd.DataFrame(
         rows, columns=["user_id", "day", "day_of_week", "time_of_day", "price",],
