@@ -151,21 +151,6 @@ async def add_price(ctx, day: str, time_of_day: str, price: str):
     """,
 )
 async def show_graph(ctx, *args):
-    df = get_turnip_data(ctx, args)
-    fig = build_graph(ctx, df)
-
-    with tempfile.NamedTemporaryFile(suffix=".png") as tf:
-        fig.savefig(tf.name, bbox_inches="tight", dpi=150)
-        plt.close(fig)
-        await ctx.send(
-            f"Showing plot for week of {start_day}", file=discord.File(tf.name, tf.name)
-        )
-
-
-def get_turnip_data(ctx, *args):
-    """
-    Params match that of show_graph
-    """
     day = datetime.date.today()
     user_only = False
     if len(args) == 1:
@@ -177,12 +162,23 @@ def get_turnip_data(ctx, *args):
         day = parse_date(args[0], fuzzy=True).date()
         user_only = args[1] == "me"
 
-    if day.weekday() == 6:
-        day = day - datetime.timedelta(days=-7)
+    start_day, end_day = get_week_start_end(day)
 
-    start_day = beginning_of_week(day)
-    end_day = start_day + datetime.timedelta(days=7)
+    df = get_turnip_data(ctx, start_day, end_day, user_only)
+    fig = build_graph(ctx, df)
 
+    with tempfile.NamedTemporaryFile(suffix=".png") as tf:
+        fig.savefig(tf.name, bbox_inches="tight", dpi=150)
+        plt.close(fig)
+        await ctx.send(
+            f"Showing plot for week of {start_day}", file=discord.File(tf.name, tf.name)
+        )
+
+
+def get_turnip_data(ctx, start_day, end_day, user_only=False):
+    """
+    Params match that of show_graph
+    """
     user_id = str(ctx.author.id)
     server_id = str(ctx.guild.id)
     db_add_user_server(user_id, server_id)
@@ -243,6 +239,15 @@ def get_turnip_data(ctx, *args):
     )
     c.close()
     return df
+
+
+def get_week_start_end(day: datetime.date) -> (datetime.date, datetime.date):
+    if day.weekday() == 6:
+        day = day - datetime.timedelta(days=-7)
+
+    start_day = beginning_of_week(day)
+    end_day = start_day + datetime.timedelta(days=7)
+    return start_day, end_day
 
 
 def beginning_of_week(day: datetime.date) -> datetime.date:
@@ -403,8 +408,8 @@ def build_graph(ctx, df: pd.DataFrame):
 
     # include the pattern in the legend if it is known
     def format_legend(row):
-        if len(row["patterns"]) == 1:
-            return f"{row['User']} ({row['patterns'][0].value}, {row['patterns_reason'][0]})"
+        # if len(row["patterns"]) == 1:
+        #     return f"{row['User']} ({row['patterns'][0].value}, {row['patterns_reason'][0]})"
         return row["User"]
 
     df["legend"] = df.apply(format_legend, axis=1)
