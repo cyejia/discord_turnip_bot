@@ -151,28 +151,32 @@ async def add_price(ctx, day: str, time_of_day: str, price: str):
     """,
 )
 async def show_graph(ctx, *args):
-    day = datetime.date.today()
-    user_only = False
-    if len(args) == 1:
-        try:
+    try:
+        day = datetime.date.today()
+        user_only = False
+        if len(args) == 1:
+            try:
+                day = parse_date(args[0], fuzzy=True).date()
+            except:
+                user_only = args[0] == "me"
+        elif len(args) == 2:
             day = parse_date(args[0], fuzzy=True).date()
-        except:
-            user_only = args[0] == "me"
-    elif len(args) == 2:
-        day = parse_date(args[0], fuzzy=True).date()
-        user_only = args[1] == "me"
+            user_only = args[1] == "me"
 
-    start_day, end_day = get_week_start_end(day)
+        start_day, end_day = get_week_start_end(day)
 
-    df = get_turnip_data(ctx, start_day, end_day, user_only)
-    fig = build_graph(ctx, df)
+        df = get_turnip_data(ctx, start_day, end_day, user_only)
+        fig = build_graph(ctx, df)
 
-    with tempfile.NamedTemporaryFile(suffix=".png") as tf:
-        fig.savefig(tf.name, bbox_inches="tight", dpi=150)
-        plt.close(fig)
-        await ctx.send(
-            f"Showing plot for week of {start_day}", file=discord.File(tf.name, tf.name)
-        )
+        with tempfile.NamedTemporaryFile(suffix=".png") as tf:
+            fig.savefig(tf.name, bbox_inches="tight", dpi=150)
+            plt.close(fig)
+            await ctx.send(
+                f"Showing plot for week of {start_day}",
+                file=discord.File(tf.name, tf.name),
+            )
+    except Exception as e:
+        await ctx.send(str(e))
 
 
 def get_turnip_data(ctx, start_day, end_day, user_only=False):
