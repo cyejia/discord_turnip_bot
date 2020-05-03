@@ -25,7 +25,6 @@ DATABASE_URL = os.environ["DATABASE_URL"]
 DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
 
 # the code makes the followingn assumptions about DAYS_PER_WEEK:
-# - that the first index is the base price
 # - "Monday AM" is hardcoded
 DAYS_PER_WEEK = [
     "Sunday AM",
@@ -43,6 +42,8 @@ DAYS_PER_WEEK = [
     "Saturday AM",
     "Saturday PM",
 ]
+BASE_PRICE_DAY = DAYS_PER_WEEK[0]
+
 logging.basicConfig(level=logging.WARNING)
 bot = commands.Bot(command_prefix=["/turnip ", "/t ", "."])
 conn = psycopg2.connect(DATABASE_URL, sslmode="require")
@@ -168,7 +169,7 @@ async def show_graph(ctx, *args):
         df = get_turnip_data(ctx, start_day, end_day, user_only)
         if df is None:
             await ctx.send("Sorry, there's no data for these parameters!")
-            
+
         fig = build_graph(ctx, df)
 
         with tempfile.NamedTemporaryFile(suffix=".png") as tf:
@@ -366,14 +367,14 @@ def analyze_prices(ctx, df: pd.DataFrame):
 
     # calculate perent of base
     def get_percent_of_base(row, base_prices):
-        if row["User"] in base_prices and row["Timepoint"] != DAYS_PER_WEEK[0]:
+        if row["User"] in base_prices and row["Timepoint"] != BASE_PRICE_DAY:
             return row["price"] / base_prices[row["User"]] * 100
         else:
             return None
 
     base_prices = {
         row["User"]: row["price"]
-        for _, row in df[df["Timepoint"] == DAYS_PER_WEEK[0]].iterrows()
+        for _, row in df[df["Timepoint"] == BASE_PRICE_DAY].iterrows()
     }
     df["percent_of_base"] = df.apply(
         lambda row: get_percent_of_base(row, base_prices), axis=1
@@ -406,7 +407,13 @@ def build_graph(ctx, df: pd.DataFrame):
 
     # label points with price percentage relative to base
     for _, row in df.iterrows():
-        if not np.isnan(row["percent_of_base"]):
+        if row["Timepoint"] == BASE_PRICE_DAY:
+            # annotate base price
+            ax.annotate(
+                row["price"], xy=(DAYS_PER_WEEK.index(row["Timepoint"]), row["price"]),
+            )
+        elif not np.isnan(row["percent_of_base"]):
+            # annotate precentage of base price
             ax.annotate(
                 "{:.0f}%".format(row["percent_of_base"]),
                 xy=(DAYS_PER_WEEK.index(row["Timepoint"]), row["price"]),
@@ -442,11 +449,12 @@ def get_possible_patterns(percent_of_base: pd.Series) -> (List, str):
     :param percent_of_base: series where index is Timepoint and value is price
     :return: tuple of (list of possible patterns, reason for conclusion)
     """
+    delta = 5  # for some tolerance
     if "Monday AM" in percent_of_base.index:
-        if percent_of_base.loc["Monday AM"] > 90:
+        if percent_of_base.loc["Monday AM"] > 90 + delta:
             return [MarketPatterns.random], "Initial price >90%"
-        elif percent_of_base.loc["Monday AM"] < 85:
-            if percent_of_base.loc["Monday AM"] < 60:
+        elif percent_of_base.loc["Monday AM"] < 85 - delta:
+            if percent_of_base.loc["Monday AM"] < 60 - delta:
                 return [MarketPatterns.small_bump], "Initial price < 60%"
             else:
                 return (
@@ -555,7 +563,7 @@ def get_critter_message(
 @bot.command(aliases=["pattern"], brief="List turnip price patterns.")
 async def patterns(ctx, *args):
     message = """Large spike: 85-90% decreasing 3-5%, for 1-7 half days. Sell on 3rd increase for 200-600%.
-    Small spike: 40-90% decreasing 3-5%, for 0-7 half days. Two halves 90-140%, sell on any of next three halves at 140-200%
+    Small spike: 40-90% decreasing 3-5%, for 0-7 half days. Two halves 90-150%, then increases 140-highest (max 200%), then to the highest.
     Decreasing: 85-90% decreasing 3-5%
     Random: flips between 90-140% (initially 0-6 half days), and 60-80% decreasing 4-10%
     """
