@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import psycopg2
+from py_mini_racer import py_mini_racer
 
 from dateutil.parser import parse as parse_date
 from discord.ext import commands
@@ -380,20 +381,21 @@ def analyze_prices(ctx, df: pd.DataFrame):
         lambda row: get_percent_of_base(row, base_prices), axis=1
     )
 
-    # calculate and merge in possible patterns per user
-    # this calculates possible patterns using all data present, not incrementally per half day. thus, for a given user, the "patterns" column has the same value in every row
+    # calculate and merge in most likely pattern per user
+    # this calculates possible patterns using all data present, not incrementally per half day. thus, for a given user, the "pattern" column has the same value in every row
     patterns_data = {
         "User": [],
-        "patterns": [],
-        "patterns_reason": [],
+        "probability": [],
+        "pattern": [],
     }
     for user, group in df.groupby("User"):
-        patterns, reason = get_possible_patterns(
-            pd.Series(data=group["percent_of_base"].tolist(), index=group["Timepoint"])
+        probability, pattern = get_most_likely_pattern(
+            pd.Series(data=group["prices"].tolist(), index=group["Timepoint"])
         )
         patterns_data["User"].append(user)
-        patterns_data["patterns"].append(patterns)
-        patterns_data["patterns_reason"].append(reason)
+        patterns_data["probability"].append(probability)
+        patterns_data["pattern"].append(pattern)
+
     patterns_df = pd.DataFrame(patterns_data)
     df = pd.merge(df, patterns_df, how="left", on="User")
     return df
@@ -421,8 +423,8 @@ def build_graph(ctx, df: pd.DataFrame):
 
     # include the pattern in the legend if it is known
     def format_legend(row):
-        # if len(row["patterns"]) == 1:
-        #     return f"{row['User']} ({row['patterns'][0].value}, {row['patterns_reason'][0]})"
+        if row["probability"] > 0.5:
+            return f"{row['User']} ({row['pattern']}, {row['probability'].value})"
         return row["User"]
 
     df["legend"] = df.apply(format_legend, axis=1)
@@ -444,24 +446,54 @@ def build_graph(ctx, df: pd.DataFrame):
     return fig
 
 
-def get_possible_patterns(percent_of_base: pd.Series) -> (List, str):
+def get_most_likely_pattern(
+    user_prices: pd.Series, previous_pattern=None
+) -> (float, str):
     """
-    :param percent_of_base: series where index is Timepoint and value is price
-    :return: tuple of (list of possible patterns, reason for conclusion)
+    :user_prices: series where index is day of week, value is price
+    :previous_pattern: not yet implemented
     """
-    delta = 5  # for some tolerance
-    if "Monday AM" in percent_of_base.index:
-        if percent_of_base.loc["Monday AM"] > 90 + delta:
-            return [MarketPatterns.random], "Initial price >90%"
-        elif percent_of_base.loc["Monday AM"] < 85 - delta:
-            if percent_of_base.loc["Monday AM"] < 60 - delta:
-                return [MarketPatterns.small_bump], "Initial price < 60%"
-            else:
-                return (
-                    [MarketPatterns.small_bump, MarketPatterns.random],
-                    "Initial price < 85%, likely small spike",
-                )
-    return [x for x in MarketPatterns], ""
+    # improvement: cache these lines
+    with open("turnipprophet/predict.js") as f:
+        prophet_js_code = f.read()
+    ctx = py_mini_racer.MiniRacer()
+    ctx.eval(prophet_js_code)
+
+    # format a prices array for how the js code wants it
+    # pad holes for unreported days
+    days = pd.Series(index=DAYS_PER_WEEK, name="days")
+    user_prices.name = "prices"
+    df = pd.merge(
+        days.to_frame(), user_prices, how="left", right_index=True, left_index=True
+    )
+    assert list(df.index) == DAYS_PER_WEEK
+
+    prices = df["prices"].tolist()
+    # js code wants the initial price specified twice (i.e. Sunday PM filled in by the Sunday AM price)
+    prices[1] = prices[0]
+    js_formatted = [str(int(x)) if x and not np.isnan(x) else "null" for x in prices]
+
+    ctx.eval(f'let predictor = new Predictor([{", ".join(js_formatted)}], false, null)')
+    data = ctx.eval("predictor.analyze_possibilities()")
+
+    # for the time being while not yet implemented, for simplicity remove the first element. this is the projection range across all possible patterns
+    data = data[1:]
+
+    # the returned array has a lot of information, unclear how to interpret
+    # just seeing if we can pick out some things, and throwing out all the other information
+
+    pattern_probabilities = [
+        (x["category_total_probability"], x["pattern_description"])
+        for x in data
+        if "category_total_probability" in x and "pattern_description" in x
+    ]
+
+    if len(pattern_probabilities) == 0:
+        return None, None
+
+    # return probability, pattern
+    most_likely = sorted(pattern_probabilities)[0]
+    return most_likely
 
 
 @bot.command(
