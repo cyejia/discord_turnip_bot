@@ -390,7 +390,7 @@ def analyze_prices(ctx, df: pd.DataFrame):
     }
     for user, group in df.groupby("User"):
         probability, pattern = get_most_likely_pattern(
-            pd.Series(data=group["prices"].tolist(), index=group["Timepoint"])
+            pd.Series(data=group["price"].tolist(), index=group["Timepoint"])
         )
         patterns_data["User"].append(user)
         patterns_data["probability"].append(probability)
