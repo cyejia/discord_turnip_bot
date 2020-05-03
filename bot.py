@@ -423,7 +423,7 @@ def build_graph(ctx, df: pd.DataFrame):
 
     # include the pattern in the legend if it is known
     def format_legend(row):
-        if row["probability"] > 0.5:
+        if row["probability"] and row["probability"] > 0.5:
             return f"{row['User']} ({row['pattern']}, {row['probability'].value})"
         return row["User"]
 
@@ -462,13 +462,13 @@ def get_most_likely_pattern(
     # format a prices array for how the js code wants it
     # pad holes for unreported days
     days = pd.Series(index=DAYS_PER_WEEK, name="days")
-    user_prices.name = "prices"
+    user_prices.name = "price"
     df = pd.merge(
         days.to_frame(), user_prices, how="left", right_index=True, left_index=True
     )
     assert list(df.index) == DAYS_PER_WEEK
 
-    prices = df["prices"].tolist()
+    prices = df["price"].tolist()
     # js code wants the initial price specified twice (i.e. Sunday PM filled in by the Sunday AM price)
     prices[1] = prices[0]
     js_formatted = [str(int(x)) if x and not np.isnan(x) else "null" for x in prices]
